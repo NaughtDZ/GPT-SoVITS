@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>GPT-SoVITS 参数构建工具</title>
+  <style>
+    body { font-family: sans-serif; padding: 2em; background: #f9f9f9; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { padding: 8px; border-bottom: 1px solid #ccc; }
+    input, select, textarea { width: 100%; padding: 6px; }
+    textarea { resize: vertical; }
+    .small { font-size: 0.8em; color: #666; }
+    .error { color: red; font-size: 0.9em; }
+    .btn { margin-top: 1em; padding: 0.6em 1.2em; font-size: 1em; }
+  </style>
+</head>
+<body>
+  <h2>GPT-SoVITS TTS 参数构建器</h2>
+  <p>支持保存参数、复制请求链接、自定义参数组合等。</p>
+
+  <div id="errorMsg" class="error"></div>
+
+  <table>
+    <tr><th>参数</th><th>值</th><th>说明</th></tr>
+
+    <tr>
+      <td>text</td>
+      <td><textarea id="text" rows="3" placeholder="请输入要朗读的内容"></textarea></td>
+      <td>朗读文本（必须）</td>
+    </tr>
+
+    <tr>
+      <td>text_lang</td>
+      <td>
+        <input list="langs" id="text_lang" value="zh">
+        <datalist id="langs">
+          <option value="zh">
+          <option value="en">
+          <option value="ja">
+		  <option value="mix">
+		  <option value="auto">
+        </datalist>
+      </td>
+      <td>朗读文本的语言</td>
+    </tr>
+
+    <tr>
+      <td>ref_audio_path</td>
+      <td><input id="ref_audio_path" value="archive_jingyuan_1.wav"></td>
+      <td>参考音频路径（必须）</td>
+    </tr>
+
+    <tr>
+      <td>prompt_text</td>
+      <td><input id="prompt_text" value="我是景元"></td>
+      <td>提示语</td>
+    </tr>
+
+    <tr>
+      <td>prompt_lang</td>
+      <td>
+        <input list="langs" id="prompt_lang" value="zh">
+      </td>
+      <td>提示语语言</td>
+    </tr>
+
+    <tr>
+      <td>media_type</td>
+      <td>
+        <input list="medias" id="media_type" value="ogg">
+        <datalist id="medias">
+          <option value="wav">
+          <option value="ogg">
+          <option value="aac">
+          <option value="raw">
+        </datalist>
+      </td>
+      <td>音频格式</td>
+    </tr>
+
+    <tr>
+      <td>streaming_mode</td>
+      <td>
+        <input list="bools" id="streaming_mode" value="true">
+        <datalist id="bools">
+          <option value="true">
+          <option value="false">
+        </datalist>
+      </td>
+      <td>是否启用流式输出</td>
+    </tr>
+
+    <tr>
+      <td>speed_factor</td>
+      <td><input id="speed_factor" value="1.0"></td>
+      <td>播放速度（1.0=正常）</td>
+    </tr>
+
+    <tr>
+      <td>top_k</td>
+      <td><input id="top_k" value="5"></td>
+      <td>top-k 采样</td>
+    </tr>
+
+    <tr>
+      <td>top_p</td>
+      <td><input id="top_p" value="1.0"></td>
+      <td>top-p nucleus 采样</td>
+    </tr>
+
+    <tr>
+      <td>temperature</td>
+      <td><input id="temperature" value="1.0"></td>
+      <td>采样温度</td>
+    </tr>
+
+    <tr>
+      <td>text_split_method</td>
+      <td><input id="text_split_method" value="cut5"></td>
+      <td>文本切分方法（如 cut0~cut5）</td>
+    </tr>
+
+    <tr>
+      <td>sample_steps</td>
+      <td><input id="sample_steps" value="32"></td>
+      <td>采样步数</td>
+    </tr>
+
+    <tr>
+      <td>repetition_penalty</td>
+      <td><input id="repetition_penalty" value="1.35"></td>
+      <td>重复惩罚</td>
+    </tr>
+	 <tr>
+      <td>base_URL</td>
+      <td><input id="base_URL" value="http://127.0.0.1:9880/tts"></td>
+      <td>api地址</td>
+    </tr>
+  </table>
+
+  <button class="btn" onclick="generateURL()">✅ 生成请求链接</button>
+  <button class="btn" onclick="copyURL()">📋 复制链接</button>
+  <button class="btn" onclick="openURL()">🔗 浏览器打开</button>
+  <button class="btn" onclick="abortGeneration()">⛔ 中止当前合成</button>
+  <button class="btn" onclick="saveConfig()">💾 保存参数</button>
+  <button class="btn" onclick="loadConfig()">📂 载入参数</button>
+
+  <textarea id="result" rows="3" readonly style="width:100%; margin-top:10px;"></textarea>
+
+  <audio id="audioPlayer" controls style="display:none; width:100%; margin-top:1em;"></audio>
+
+  <script>
+	//const baseURL = "http://127.0.0.1:9880/tts";
+	const baseURL = base_URL.value
+
+    function getVal(id) {
+      return document.getElementById(id).value.trim();
+    }
+
+    function validateRequired(fields) {
+      let errors = [];
+      if (!getVal("text")) errors.push("text");
+      if (!getVal("ref_audio_path")) errors.push("ref_audio_path");
+      if (!getVal("text_lang")) errors.push("text_lang");
+      if (!getVal("prompt_lang")) errors.push("prompt_lang");
+      if (errors.length > 0) {
+        document.getElementById("errorMsg").textContent = "缺少必要参数: " + errors.join(", ");
+        return false;
+      }
+      document.getElementById("errorMsg").textContent = "";
+      return true;
+    }
+
+    function generateURL() {
+      if (!validateRequired()) return;
+      const params = new URLSearchParams();
+      const ids = [
+        "text", "text_lang", "ref_audio_path", "prompt_text", "prompt_lang",
+        "media_type", "streaming_mode", "speed_factor", "top_k", "top_p",
+        "temperature", "text_split_method", "sample_steps", "repetition_penalty"
+      ];
+      ids.forEach(id => params.append(id, getVal(id)));
+      const fullURL = baseURL + "?" + params.toString();
+      document.getElementById("result").value = fullURL;
+    }
+
+    function copyURL() {
+      generateURL();
+      const url = document.getElementById("result");
+      url.select();
+      document.execCommand("copy");
+      alert("已复制 URL");
+    }
+
+    function openURL() {
+      generateURL();
+      const url = document.getElementById("result").value;
+      window.open(url, "_blank");
+    }
+
+    function saveConfig() {
+      const ids = [
+        "text", "text_lang", "ref_audio_path", "prompt_text", "prompt_lang",
+        "media_type", "streaming_mode", "speed_factor", "top_k", "top_p",
+        "temperature", "text_split_method", "sample_steps", "repetition_penalty"
+      ];
+      const data = {};
+      ids.forEach(id => data[id] = getVal(id));
+      localStorage.setItem("tts_config", JSON.stringify(data));
+      alert("参数已保存到本地浏览器");
+    }
+
+    function loadConfig() {
+      const data = JSON.parse(localStorage.getItem("tts_config") || "{}");
+      for (let key in data) {
+        if (document.getElementById(key)) {
+          document.getElementById(key).value = data[key];
+        }
+      }
+      alert("已载入保存的参数");
+    }
+	
+	 async function abortGeneration() {
+    if (!confirm("确认中止当前合成？这将重启TTS任务但不会退出服务。")) return;
+    try {
+      const res = await fetch("http://127.0.0.1:9880/control?command=restart");
+      if (res.ok) {
+        alert("已发送中止命令（重启任务）");
+      } else {
+        alert("中止失败，状态码：" + res.status);
+      }
+    } catch (err) {
+      alert("请求失败：" + err);
+    }
+  }
+  </script>
+</body>
+</html>
